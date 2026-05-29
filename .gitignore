@@ -20,6 +20,9 @@ data/raw/*
 data/processed/*
 !data/raw/.gitkeep
 !data/processed/.gitkeep
+*.csv
+*.pkl
+*.joblib
 
 # Trained model artifacts
 models/*.pkl
