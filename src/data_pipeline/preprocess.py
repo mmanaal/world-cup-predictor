@@ -1,7 +1,9 @@
 import numpy as np
 import pandas as pd
 import os
+import sys 
 
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../..")))
 from src.data_pipeline.fetch_historical import load_kaggle_results
 
 
@@ -17,9 +19,8 @@ def encode_outcome(df: pd.DataFrame) -> pd.DataFrame:
         df["home_score"] == df["away_score"],
         df["home_score"] < df["away_score"],
     ]
-    df["outcome"] = np.select(conditions, [2, 1, 0], default=np.nan).astype("Int8")
+    df["outcome"] = pd.array(np.select(conditions, [2, 1, 0], default=-1), dtype="Int8")
     return df
-
 
 def normalize_team_names(df: pd.DataFrame) -> pd.DataFrame:
     df = df.copy()
