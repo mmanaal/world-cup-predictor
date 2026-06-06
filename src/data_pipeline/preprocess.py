@@ -28,13 +28,25 @@ def normalize_team_names(df: pd.DataFrame) -> pd.DataFrame:
     df["away_team"] = df["away_team"].str.strip().str.title()
     return df
 
+DECAY_HALF_LIFE_DAYS = 5 * 365.25  # 5-year half-life
+
+
+def apply_decay_weights(df: pd.DataFrame) -> pd.DataFrame:
+    """Exponential decay weight: w = 2^(-(ref - date) / half_life). Reference is today."""
+    df = df.copy()
+    reference = pd.Timestamp.today().normalize()
+    days_ago = (reference - pd.to_datetime(df["date"])).dt.days.clip(lower=0)
+    df["weight"] = np.power(2.0, -days_ago / DECAY_HALF_LIFE_DAYS)
+    return df
+
+
 def main():
     out_path = "data/processed/matches_clean.csv"
 
     df = load_kaggle_results()
 
-    # Filter to post-1990 — older data less relevant to modern football
-    df = df[df["date"] >= "1990-01-01"].copy()
+    # Drop matches before 2010 — ELO and modern football styles diverge sharply earlier
+    df = df[df["date"] >= "2010-01-01"].copy()
 
     # Run pipeline
     df = drop_incomplete_matches(df)
@@ -44,6 +56,7 @@ def main():
     # Add useful columns
     df["goal_diff"] = df["home_score"] - df["away_score"]
     df["is_world_cup"] = df["tournament"].str.contains("FIFA World Cup", na=False)
+    df = apply_decay_weights(df)
 
     os.makedirs("data/processed", exist_ok=True)
     df.to_csv(out_path, index=False)
