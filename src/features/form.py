@@ -12,6 +12,8 @@ from typing import NamedTuple
 
 import pandas as pd
 
+from src.features.match_context import add_match_context_features
+
 # ---------------------------------------------------------------------------
 # Constants
 # ---------------------------------------------------------------------------
@@ -184,21 +186,33 @@ def main() -> None:
     matches = pd.read_csv(in_path, parse_dates=["date"])
 
     print(f"Loaded {len(matches)} matches from {in_path}")
-    print("Computing form features …")
 
+    print("Computing form features …")
     result, thin_df = add_rich_form_features(matches)
+
+    print("Computing match-context features …")
+    result = add_match_context_features(result)
 
     os.makedirs("data/processed", exist_ok=True)
     result.to_csv(out_path, index=False)
-    print(f"Saved {len(result)} rows to {out_path}\n")
+    print(f"\nSaved {len(result)} rows × {len(result.columns)} columns to {out_path}")
+    print(f"Shape: {result.shape}\n")
 
-    form_cols = [
+    new_cols = [
         "date", "home_team", "away_team",
-        "home_form_pts", "home_form_gf", "home_form_ga", "home_form_gd",
-        "away_form_pts", "away_form_gf", "away_form_ga", "away_form_gd",
+        "fixture_congestion_home", "fixture_congestion_away",
+        "is_knockout", "tournament_weight", "rivalry_flag",
     ]
-    print("Sample (5 rows):")
-    print(result[form_cols].head(5).to_string(index=False))
+    print("Sample of new columns (5 rows):")
+    print(result[new_cols].head(5).to_string(index=False))
+
+    # Distribution summaries
+    print(f"\ntournament_weight value counts:")
+    print(result["tournament_weight"].value_counts().sort_index().to_string())
+    print(f"\nis_knockout matches:  {result['is_knockout'].sum()}")
+    print(f"rivalry_flag matches: {result['rivalry_flag'].sum()}")
+    print(f"Max fixture congestion (home): {result['fixture_congestion_home'].max()}")
+    print(f"Max fixture congestion (away): {result['fixture_congestion_away'].max()}")
 
     print(f"\nTeams with fewer than {WINDOW} prior games at their first appearance: "
           f"{len(thin_df['team'].unique())}")
