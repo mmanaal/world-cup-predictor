@@ -4,6 +4,14 @@ Match outcome predictor.
 Loads the trained XGBoost model and assembles a feature vector for any
 matchup by looking up current ELO, form, and H2H stats from the
 processed dataset. Applies the saved draw threshold at inference time.
+
+Inference-time adjustments (do not affect the saved model weights):
+  Fix 1 — tournament_weight is pinned to the training-data mean so WC
+           predictions aren't artificially biased toward draws.
+  Fix 2 — Confederation ELO discounts for structural over-rating of
+           OFC / CONCACAF / CAF minnows.
+  Fix 3 — Data-sparseness shrinkage: teams with <10 dataset appearances
+           have their ELO nudged 50% toward 1400 (conservative prior).
 """
 import json
 from pathlib import Path
@@ -29,16 +37,91 @@ _DRAW_CLASS    = 1
 
 OUTCOME_LABELS = {0: "Away win", 1: "Draw", 2: "Home win"}
 
+# ── Fix 2: Confederation ELO discounts ────────────────────────────────────
+# Only teams that sit outside their confederation's top tier are discounted.
+# "MAJOR" = 0 discount (UEFA/CONMEBOL top sides, AFC/CAF/CONCACAF top tier).
+TEAM_CONFEDERATION: dict[str, str] = {
+    # ── OFC (all discounted — no top-tier OFC nation) ──
+    "New Zealand": "OFC", "Solomon Islands": "OFC", "Vanuatu": "OFC",
+    "Papua New Guinea": "OFC", "Fiji": "OFC", "Tahiti": "OFC",
+    "New Caledonia": "OFC", "Samoa": "OFC", "American Samoa": "OFC",
+    # ── CONCACAF minnows ──
+    "Panama": "CONCACAF_MINNOW", "Haiti": "CONCACAF_MINNOW",
+    "Cuba": "CONCACAF_MINNOW", "Curaçao": "CONCACAF_MINNOW",
+    "Trinidad and Tobago": "CONCACAF_MINNOW", "Honduras": "CONCACAF_MINNOW",
+    "El Salvador": "CONCACAF_MINNOW", "Jamaica": "CONCACAF_MINNOW",
+    "Barbados": "CONCACAF_MINNOW", "Bermuda": "CONCACAF_MINNOW",
+    "Antigua and Barbuda": "CONCACAF_MINNOW", "Grenada": "CONCACAF_MINNOW",
+    "Belize": "CONCACAF_MINNOW", "Guatemala": "CONCACAF_MINNOW",
+    "Nicaragua": "CONCACAF_MINNOW", "Saint Kitts and Nevis": "CONCACAF_MINNOW",
+    "Saint Lucia": "CONCACAF_MINNOW", "Saint Vincent and the Grenadines": "CONCACAF_MINNOW",
+    # ── CONCACAF major — no discount ──
+    "Mexico": "MAJOR", "United States": "MAJOR", "Canada": "MAJOR",
+    "Costa Rica": "MAJOR",
+    # ── CAF minnows ──
+    "Cape Verde": "CAF_MINNOW", "Comoros": "CAF_MINNOW",
+    "Tanzania": "CAF_MINNOW", "Mozambique": "CAF_MINNOW",
+    "Rwanda": "CAF_MINNOW", "Uganda": "CAF_MINNOW",
+    "Zimbabwe": "CAF_MINNOW", "Namibia": "CAF_MINNOW",
+    "Benin": "CAF_MINNOW", "Equatorial Guinea": "CAF_MINNOW",
+    "Gambia": "CAF_MINNOW", "Madagascar": "CAF_MINNOW",
+    "Guinea-Bissau": "CAF_MINNOW", "Ethiopia": "CAF_MINNOW",
+    "Kenya": "CAF_MINNOW", "Sudan": "CAF_MINNOW",
+    "Libya": "CAF_MINNOW", "Zambia": "CAF_MINNOW",
+    "Mauritania": "CAF_MINNOW", "Malawi": "CAF_MINNOW",
+    # ── CAF major — no discount ──
+    "Morocco": "MAJOR", "Senegal": "MAJOR", "Nigeria": "MAJOR",
+    "Egypt": "MAJOR", "Cameroon": "MAJOR", "Ghana": "MAJOR",
+    "Ivory Coast": "MAJOR", "Tunisia": "MAJOR", "Algeria": "MAJOR",
+    "South Africa": "MAJOR", "Mali": "MAJOR", "Burkina Faso": "MAJOR",
+    "Democratic Republic of Congo": "MAJOR",
+    # ── UEFA (all major) ──
+    "Spain": "MAJOR", "Germany": "MAJOR", "France": "MAJOR",
+    "England": "MAJOR", "Italy": "MAJOR", "Portugal": "MAJOR",
+    "Netherlands": "MAJOR", "Belgium": "MAJOR", "Croatia": "MAJOR",
+    "Switzerland": "MAJOR", "Denmark": "MAJOR", "Poland": "MAJOR",
+    "Austria": "MAJOR", "Sweden": "MAJOR", "Turkey": "MAJOR",
+    "Czech Republic": "MAJOR", "Serbia": "MAJOR", "Ukraine": "MAJOR",
+    "Romania": "MAJOR", "Hungary": "MAJOR", "Scotland": "MAJOR",
+    "Wales": "MAJOR", "Slovenia": "MAJOR", "Slovakia": "MAJOR",
+    "Albania": "MAJOR", "Greece": "MAJOR", "Russia": "MAJOR",
+    "Norway": "MAJOR", "Finland": "MAJOR",
+    # ── CONMEBOL (all major) ──
+    "Argentina": "MAJOR", "Brazil": "MAJOR", "Uruguay": "MAJOR",
+    "Colombia": "MAJOR", "Chile": "MAJOR", "Ecuador": "MAJOR",
+    "Peru": "MAJOR", "Paraguay": "MAJOR", "Venezuela": "MAJOR",
+    "Bolivia": "MAJOR",
+    # ── AFC major — no discount ──
+    "Japan": "MAJOR", "South Korea": "MAJOR", "Iran": "MAJOR",
+    "Saudi Arabia": "MAJOR", "Australia": "MAJOR", "Qatar": "MAJOR",
+    "UAE": "MAJOR", "Iraq": "MAJOR", "Uzbekistan": "MAJOR",
+    "China": "MAJOR", "Jordan": "MAJOR",
+}
+
+_ELO_DISCOUNTS: dict[str, int] = {
+    "OFC":             -80,
+    "CONCACAF_MINNOW": -50,
+    "CAF_MINNOW":      -30,
+    "MAJOR":             0,
+}
+
+_SPARSE_THRESHOLD     = 10
+_SPARSE_NUDGE_TARGET  = 1400
+_SPARSE_NUDGE_WEIGHT  = 0.5   # adjusted = raw * 0.5 + 1400 * 0.5
+
 # ── Lazy-loaded singletons ─────────────────────────────────────────────────
-_model         = None
-_feature_cols  = None
+_model          = None
+_feature_cols   = None
 _draw_threshold = None
-_df            = None
-_explainer     = None
+_df             = None
+_explainer      = None
+_tw_train_mean  = None   # Fix 1: pinned at load time from training rows
+_appearance_counts: "pd.Series | None" = None
 
 
 def _load_artifacts() -> None:
     global _model, _feature_cols, _draw_threshold, _df, _explainer
+    global _tw_train_mean, _appearance_counts
     if _model is not None:
         return
     _model = joblib.load(MODEL_PATH)
@@ -49,6 +132,15 @@ def _load_artifacts() -> None:
     _df = pd.read_csv(DATA_PATH, parse_dates=["date"])
     _df["neutral"] = _df["neutral"].astype(int)
     _explainer = shap.TreeExplainer(_model)
+
+    # Fix 1 — compute tournament_weight mean from training rows only
+    _train = _df[_df["date"] < "2022-11-20"]
+    _tw_train_mean = float(_train["tournament_weight"].mean())
+
+    # Fix 3 — appearance counts per team across the full dataset
+    _appearance_counts = pd.concat(
+        [_df["home_team"], _df["away_team"]]
+    ).value_counts()
 
 
 # ── Feature lookup helpers ─────────────────────────────────────────────────
@@ -64,6 +156,31 @@ def _latest_row(team: str) -> pd.Series:
 def _team_elo(team: str) -> float:
     row = _latest_row(team)
     return float(row["home_elo"] if row["home_team"] == team else row["away_elo"])
+
+
+def _confed_elo_discount(team: str) -> int:
+    """Fix 2: return the ELO penalty for teams outside their confederation's top tier."""
+    confed = TEAM_CONFEDERATION.get(team, "MAJOR")
+    return _ELO_DISCOUNTS.get(confed, 0)
+
+
+def _is_data_sparse(team: str) -> bool:
+    """Fix 3: true when we have fewer than 10 matches for this team."""
+    return int(_appearance_counts.get(team, 0)) < _SPARSE_THRESHOLD
+
+
+def _adjusted_elo(team: str) -> tuple[float, bool]:
+    """
+    Return (adjusted_elo, is_sparse).
+    Applies Fix 3 shrinkage first, then Fix 2 confederation discount.
+    """
+    raw = _team_elo(team)
+    sparse = _is_data_sparse(team)
+    elo = raw
+    if sparse:
+        elo = elo * _SPARSE_NUDGE_WEIGHT + _SPARSE_NUDGE_TARGET * _SPARSE_NUDGE_WEIGHT
+    elo += _confed_elo_discount(team)
+    return elo, sparse
 
 
 def _team_form(team: str) -> dict:
@@ -167,12 +284,23 @@ def predict_match(
     """
     _load_artifacts()
 
-    home_elo  = _team_elo(home_team)
-    away_elo  = _team_elo(away_team)
+    # Fix 2 + 3: get ELOs with sparseness shrinkage and confederation discount
+    home_elo, home_sparse = _adjusted_elo(home_team)
+    away_elo, away_sparse = _adjusted_elo(away_team)
+
     home_form = _team_form(home_team)
     away_form = _team_form(away_team)
     h2h       = _h2h_stats(home_team, away_team)
     rivalry   = _rivalry_flag(home_team, away_team)
+
+    # Fix 1: pin tournament_weight to training-data mean if the feature is in
+    # the model's feature list, so WC predictions aren't biased toward draws
+    # by the high tournament_weight signal.
+    tw_value = (
+        _tw_train_mean
+        if "tournament_weight" in _feature_cols
+        else float(tournament_weight)
+    )
 
     features = {
         "elo_diff":                home_elo - away_elo,
@@ -187,7 +315,7 @@ def predict_match(
         "away_form_ga":            away_form["form_ga"],
         "away_form_gd":            away_form["form_gd"],
         "neutral":                 int(neutral),
-        "tournament_weight":       float(tournament_weight),
+        "tournament_weight":       tw_value,
         "rivalry_flag":            rivalry,
         "is_knockout":             int(is_knockout),
         "fixture_congestion_home": 0,
@@ -212,6 +340,12 @@ def predict_match(
     else:
         confidence = "Low"
 
+    sparse_flags = []
+    if home_sparse:
+        sparse_flags.append(home_team)
+    if away_sparse:
+        sparse_flags.append(away_team)
+
     return {
         "home_team":         home_team,
         "away_team":         away_team,
@@ -221,6 +355,7 @@ def predict_match(
         "predicted_outcome": OUTCOME_LABELS[predicted_class],
         "confidence":        confidence,
         "top_factors":       _top_shap_factors(X, predicted_class),
+        "data_sparse":       sparse_flags,  # Fix 3: non-empty = ELO nudged toward 1400
     }
 
 
@@ -246,34 +381,75 @@ def predict_batch(model, matches: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(probs, columns=["away_win_prob", "draw_prob", "home_win_prob"])
 
 
-# ── CLI demo ───────────────────────────────────────────────────────────────
+# ── CLI demo / before-after comparison ────────────────────────────────────
+
+# Baseline values captured before any fixes were applied (tw=3 passed through,
+# no confederation discounts, no sparseness nudge).
+_BEFORE: dict[str, dict] = {
+    "Spain vs Cape Verde": {
+        "home_win_prob": 0.6074, "draw_prob": 0.3394, "away_win_prob": 0.0536,
+        "predicted_outcome": "Draw",
+    },
+    "Ghana vs Panama": {
+        "home_win_prob": 0.1254, "draw_prob": 0.1924, "away_win_prob": 0.6822,
+        "predicted_outcome": "Away win",
+    },
+    "Argentina vs Algeria": {
+        "home_win_prob": 0.4914, "draw_prob": 0.3164, "away_win_prob": 0.1922,
+        "predicted_outcome": "Draw",
+    },
+    "Germany vs Curaçao": {
+        "home_win_prob": 0.6491, "draw_prob": 0.2052, "away_win_prob": 0.1457,
+        "predicted_outcome": "Home win",
+    },
+}
+
 
 def main():
-    fixtures = [
-        ("Argentina", "France",   True, 3, True),
-        ("England",   "Spain",    True, 3, False),
-        ("Brazil",    "Germany",  True, 3, True),
-        ("Morocco",   "Portugal", True, 3, False),
-        ("Japan",     "Germany",  True, 3, False),
+    comparison_fixtures = [
+        ("Spain",     "Cape Verde", True, 3, False),
+        ("Ghana",     "Panama",     True, 3, False),
+        ("Argentina", "Algeria",    True, 3, False),
+        ("Germany",   "Curaçao",    True, 3, False),
     ]
 
-    print("\n" + "=" * 62)
-    print("  WORLD CUP MATCH PREDICTIONS")
-    print("=" * 62)
+    print("\n" + "=" * 70)
+    print("  BEFORE / AFTER  —  three inference-time fixes")
+    print("  Fix 1: tournament_weight pinned to training mean")
+    print("  Fix 2: confederation ELO discounts (OFC/CONCACAF/CAF minnows)")
+    print("  Fix 3: data-sparseness ELO nudge toward 1400")
+    print("=" * 70)
 
-    for home, away, neutral, tw, knockout in fixtures:
-        r = predict_match(home, away, neutral=neutral,
-                          tournament_weight=tw, is_knockout=knockout)
-        tag = "  [Knockout]" if knockout else ""
-        print(f"\n  {r['home_team']} vs {r['away_team']}{tag}")
-        print(f"  {'─' * 44}")
-        print(f"  Home win  :  {r['home_win_prob']:.1%}")
-        print(f"  Draw      :  {r['draw_prob']:.1%}")
-        print(f"  Away win  :  {r['away_win_prob']:.1%}")
-        print(f"  Prediction:  {r['predicted_outcome']}  ({r['confidence']} confidence)")
-        print(f"  Key factors: {', '.join(r['top_factors'])}")
+    for home, away, neutral, tw, knockout in comparison_fixtures:
+        r    = predict_match(home, away, neutral=neutral,
+                             tournament_weight=tw, is_knockout=knockout)
+        key  = f"{home} vs {away}"
+        bef  = _BEFORE[key]
+        tags = []
+        if r["data_sparse"]:
+            tags.append(f"sparse: {', '.join(r['data_sparse'])}")
+        confed_home = TEAM_CONFEDERATION.get(home, "MAJOR")
+        confed_away = TEAM_CONFEDERATION.get(away, "MAJOR")
+        if confed_away != "MAJOR":
+            tags.append(f"{away} ({confed_away}, {_ELO_DISCOUNTS[confed_away]:+d} ELO)")
+        if confed_home != "MAJOR":
+            tags.append(f"{home} ({confed_home}, {_ELO_DISCOUNTS[confed_home]:+d} ELO)")
 
-    print("\n" + "=" * 62)
+        print(f"\n  {key}")
+        print(f"  {'─' * 56}")
+        print(f"  {'':34} {'BEFORE':>10}   {'AFTER':>10}")
+        print(f"  {'Home win':34} {bef['home_win_prob']:>9.1%}   {r['home_win_prob']:>9.1%}")
+        print(f"  {'Draw':34} {bef['draw_prob']:>9.1%}   {r['draw_prob']:>9.1%}")
+        print(f"  {'Away win':34} {bef['away_win_prob']:>9.1%}   {r['away_win_prob']:>9.1%}")
+        before_pred = bef["predicted_outcome"]
+        after_pred  = r["predicted_outcome"]
+        change = "  ← changed" if before_pred != after_pred else ""
+        print(f"  {'Prediction':34} {before_pred:>10}   {after_pred:>10}{change}")
+        print(f"  {'Confidence':34} {'':>10}   {r['confidence']:>10}")
+        if tags:
+            print(f"  Adjustments applied: {'; '.join(tags)}")
+
+    print("\n" + "=" * 70)
 
 
 if __name__ == "__main__":

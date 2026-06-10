@@ -1,0 +1,171 @@
+============================================================
+  2026 WORLD CUP — ROUND 1 PREDICTIONS
+============================================================
+
+Mexico vs South Africa
+  Home win : 64.0%
+  Draw     : 23.1%
+  Away win : 12.9%
+  Predicted: Home win (High)
+  Key factors: elo_diff, neutral, home_form_pts
+
+South Korea vs Czech Republic
+  Home win : 65.4%
+  Draw     : 24.0%
+  Away win : 10.6%
+  Predicted: Home win (High)
+  Key factors: elo_diff, neutral, away_elo
+
+Canada vs Bosnia And Herzegovina
+  Home win : 73.8%
+  Draw     : 16.9%
+  Away win : 9.3%
+  Predicted: Home win (High)
+  Key factors: elo_diff, neutral, home_form_ga
+
+United States vs Paraguay
+  Home win : 45.0%
+  Draw     : 31.0%
+  Away win : 24.0%
+  Predicted: Draw (Low)
+  Key factors: away_elo, home_elo, h2h_dominance
+
+Qatar vs Switzerland
+  Home win : 12.3%
+  Draw     : 23.6%
+  Away win : 64.0%
+  Predicted: Away win (High)
+  Key factors: elo_diff, away_elo, neutral
+
+Brazil vs Morocco
+  Home win : 27.4%
+  Draw     : 41.0%
+  Away win : 31.6%
+  Predicted: Draw (Medium)
+  Key factors: home_elo, rivalry_flag, away_form_gd
+
+Haiti vs Scotland
+  Home win : 24.4%
+  Draw     : 22.8%
+  Away win : 52.8%
+  Predicted: Away win (High)
+  Key factors: elo_diff, neutral, home_form_ga
+
+Australia vs Turkey
+  Home win : 39.2%
+  Draw     : 30.3%
+  Away win : 30.4%
+  Predicted: Draw (Low)
+  Key factors: away_form_gf, away_form_gd, home_form_gf
+
+Germany vs Curaçao
+  Home win : 76.4%
+  Draw     : 17.8%
+  Away win : 5.8%
+  Predicted: Home win (High)
+  Key factors: elo_diff, away_elo, home_form_gf
+
+Netherlands vs Japan
+  Home win : 24.3%
+  Draw     : 32.2%
+  Away win : 43.5%
+  Predicted: Draw (Low)
+  Key factors: h2h_matches, home_form_gd, away_form_gf
+
+Ivory Coast vs Ecuador
+  Home win : 31.4%
+  Draw     : 12.8%
+  Away win : 55.8%
+  Predicted: Away win (High)
+  Key factors: elo_diff, away_elo, home_elo
+
+Sweden vs Tunisia
+  Home win : 32.5%
+  Draw     : 33.1%
+  Away win : 34.4%
+  Predicted: Draw (Low)
+  Key factors: h2h_matches, away_elo, elo_diff
+
+Belgium vs Egypt
+  Home win : 36.0%
+  Draw     : 40.9%
+  Away win : 23.1%
+  Predicted: Draw (Medium)
+  Key factors: home_form_gf, home_form_pts, away_form_gf
+
+Spain vs Cape Verde
+  Home win : 73.6%
+  Draw     : 22.3%
+  Away win : 4.1%
+  Predicted: Home win (High)
+  Key factors: elo_diff, away_elo, neutral
+
+Iran vs New Zealand
+  Home win : 82.0%
+  Draw     : 12.9%
+  Away win : 5.1%
+  Predicted: Home win (High)
+  Key factors: elo_diff, neutral, away_form_pts
+
+Saudi Arabia vs Uruguay
+  Home win : 10.1%
+  Draw     : 12.5%
+  Away win : 77.4%
+  Predicted: Away win (High)
+  Key factors: elo_diff, away_elo, neutral
+
+France vs Senegal
+  Home win : 50.8%
+  Draw     : 28.9%
+  Away win : 20.3%
+  Predicted: Draw (Low)
+  Key factors: h2h_matches, home_elo, home_form_gd
+
+Iraq vs Norway
+  Home win : 25.8%
+  Draw     : 21.7%
+  Away win : 52.5%
+  Predicted: Away win (High)
+  Key factors: elo_diff, away_form_gd, neutral
+
+Argentina vs Algeria
+  Home win : 51.9%
+  Draw     : 28.2%
+  Away win : 19.8%
+  Predicted: Draw (Low)
+  Key factors: away_elo, away_form_ga, away_form_gf
+
+Austria vs Jordan
+  Home win : 58.2%
+  Draw     : 14.3%
+  Away win : 27.5%
+  Predicted: Home win (High)
+  Key factors: neutral, home_elo, away_elo
+
+Portugal vs Dr Congo
+  Home win : 54.9%
+  Draw     : 34.4%
+  Away win : 10.7%
+  Predicted: Draw (Low)
+  Key factors: away_form_ga, home_elo, h2h_matches
+
+England vs Croatia
+  Home win : 34.4%
+  Draw     : 37.3%
+  Away win : 28.3%
+  Predicted: Draw (Low)
+  Key factors: rivalry_flag, home_form_gd, away_elo
+
+Ghana vs Panama
+  Home win : 28.6%
+  Draw     : 26.4%
+  Away win : 45.0%
+  Predicted: Draw (Low)
+  Key factors: h2h_matches, elo_diff, home_form_gd
+
+Uzbekistan vs Colombia
+  Home win : 16.4%
+  Draw     : 23.4%
+  Away win : 60.2%
+  Predicted: Away win (High)
+  Key factors: elo_diff, home_elo, neutral
