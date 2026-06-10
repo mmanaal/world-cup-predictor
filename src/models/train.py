@@ -45,14 +45,19 @@ FEATURE_COLS = [
     "h2h_home_gf",
     "h2h_home_ga",
     "h2h_dominance",
+    # xG features (real data from StatsBomb for WC/Euro/AFCON/Copa, neutral fill elsewhere)
+    "home_xg_form",
+    "away_xg_form",
+    "home_xg_overperf",
+    "away_xg_overperf",
 ]
 
-# Reference point from previous best run (no H2H, threshold 0.25)
+# Reference point from previous best run (H2H included, no xG, threshold 0.25)
 PREV_BEST = {
-    "name": "Prev best: threshold 0.25 (no H2H)",
-    "accuracy": 0.5180,
-    "log_loss": 0.9104,
-    "draw_f1": 0.3686,
+    "name": "Prev best: threshold 0.25 (no xG)",
+    "accuracy": 0.5141,
+    "log_loss": 0.9050,
+    "draw_f1": 0.3728,
 }
 
 DRAW_FEATURE_COLS = FEATURE_COLS + ["elo_closeness", "form_closeness"]
@@ -253,7 +258,7 @@ def train(data_path: str = DATA_PATH):
     # COMPARISON TABLE
     # ══════════════════════════════════════════════════════════════════════
     print("\n\n" + "=" * 68)
-    print("  SUMMARY  (H2H features vs previous best)")
+    print("  SUMMARY  (with xG features vs previous best)")
     print("=" * 68)
     print(f"  {'Approach':<40} {'Acc':>7} {'LogLoss':>8} {'DrawF1':>8}")
     print(f"  {'-'*40} {'-'*7} {'-'*8} {'-'*8}")
