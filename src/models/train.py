@@ -37,7 +37,23 @@ FEATURE_COLS = [
     "is_knockout",
     "fixture_congestion_home",
     "fixture_congestion_away",
+    # H2H features
+    "h2h_matches",
+    "h2h_home_wins",
+    "h2h_away_wins",
+    "h2h_draws",
+    "h2h_home_gf",
+    "h2h_home_ga",
+    "h2h_dominance",
 ]
+
+# Reference point from previous best run (no H2H, threshold 0.25)
+PREV_BEST = {
+    "name": "Prev best: threshold 0.25 (no H2H)",
+    "accuracy": 0.5180,
+    "log_loss": 0.9104,
+    "draw_f1": 0.3686,
+}
 
 DRAW_FEATURE_COLS = FEATURE_COLS + ["elo_closeness", "form_closeness"]
 
@@ -117,17 +133,31 @@ def evaluate_preds(name: str, y_test, y_pred, y_proba) -> dict:
 
 def save_shap_plot(model: XGBClassifier, X_test: pd.DataFrame, path: str):
     explainer = shap.TreeExplainer(model)
-    shap_values = explainer.shap_values(X_test)
-    plt.figure(figsize=(10, 7))
+    sv = explainer.shap_values(X_test)
+
+    # sv is either a list of (n_samples, n_features) arrays (one per class)
+    # or a 3D (n_samples, n_features, n_classes) array depending on SHAP version.
+    if isinstance(sv, list):
+        mean_abs_shap = np.mean(np.abs(np.array(sv)), axis=0)   # (n_samples, n_features)
+    else:
+        mean_abs_shap = np.abs(sv).mean(axis=-1)                # 3D → 2D
+
+    n_features = X_test.shape[1]
+    fig, ax = plt.subplots(figsize=(10, max(6, n_features * 0.42)))
     shap.summary_plot(
-        shap_values,
+        mean_abs_shap,
         X_test,
-        class_names=["Away win", "Draw", "Home win"],
+        plot_type="dot",
+        max_display=n_features,   # show every feature
         show=False,
+        plot_size=None,           # let our figsize control the size
     )
+    ax = plt.gca()
+    ax.set_xlabel("Mean |SHAP value| (averaged across all 3 outcome classes)")
+    ax.set_title("Feature importance — beeswarm (mean |SHAP|, all classes)", pad=10)
     plt.tight_layout()
     plt.savefig(path, dpi=150, bbox_inches="tight")
-    plt.close()
+    plt.close(fig)
 
 
 def train(data_path: str = DATA_PATH):
@@ -222,19 +252,25 @@ def train(data_path: str = DATA_PATH):
     # ══════════════════════════════════════════════════════════════════════
     # COMPARISON TABLE
     # ══════════════════════════════════════════════════════════════════════
-    print("\n\n" + "=" * 64)
-    print("  SUMMARY")
-    print("=" * 64)
-    print(f"  {'Approach':<36} {'Acc':>7} {'LogLoss':>8} {'DrawF1':>8}")
-    print(f"  {'-'*36} {'-'*7} {'-'*8} {'-'*8}")
+    print("\n\n" + "=" * 68)
+    print("  SUMMARY  (H2H features vs previous best)")
+    print("=" * 68)
+    print(f"  {'Approach':<40} {'Acc':>7} {'LogLoss':>8} {'DrawF1':>8}")
+    print(f"  {'-'*40} {'-'*7} {'-'*8} {'-'*8}")
+    # Reference row
+    print(
+        f"  {PREV_BEST['name']:<40} {PREV_BEST['accuracy']:>7.4f}"
+        f" {PREV_BEST['log_loss']:>8.4f} {PREV_BEST['draw_f1']:>8.4f}  ← reference"
+    )
+    print(f"  {'·'*40} {'·'*7} {'·'*8} {'·'*8}")
     best_result = max(results, key=lambda r: r["draw_f1"])
     for r in results:
         tag = "  ◀ best" if r["name"] == best_result["name"] else ""
         print(
-            f"  {r['name']:<36} {r['accuracy']:>7.4f} {r['log_loss']:>8.4f}"
+            f"  {r['name']:<40} {r['accuracy']:>7.4f} {r['log_loss']:>8.4f}"
             f" {r['draw_f1']:>8.4f}{tag}"
         )
-    print("=" * 64)
+    print("=" * 68)
 
     # ── Save best model ────────────────────────────────────────────────────
     best_model, best_feat_cols, best_X_test = trained[best_result["name"]]
